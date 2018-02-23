@@ -3,6 +3,7 @@
 import os.path
 import json
 
+
 class HRMonitor:
     """Class for processing ECG data into heart rate parameters
     """
@@ -39,6 +40,7 @@ class HRMonitor:
         with open(file_path, 'w') as f:
             f.write(json_with_data)
 
+
 class DataHandler:
     """Class for importing and packaging data
     """
@@ -51,7 +53,7 @@ class DataHandler:
         self.data = None
         self.path = self.remove_file_type(file_path)
         
-        file_type = self.get_file_type(file_path)        
+        file_type = self.get_file_type(file_path)
         if file_type == '.csv':
             self.data = self.csvReader(file_path)
         else:
@@ -63,7 +65,6 @@ class DataHandler:
         :param file_path: file path to .csv file
         :return dictionary of data values
         """
-
         data = []
         with open(file_path) as f:
             for line in f:
@@ -78,7 +79,6 @@ class DataHandler:
         :param file_path: path to file
         :return: path to file without the extension
         """
-
         return os.path.splitext(file_path)[0]
 
     def get_file_type(self, file_path):
@@ -87,6 +87,4 @@ class DataHandler:
         :param file_path: path to file
         :return: extension of file (with the dot)
         """
-
         return os.path.splitext(file_path)[1]
-
