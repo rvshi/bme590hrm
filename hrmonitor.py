@@ -12,7 +12,7 @@ class HRMonitor:
     """
 
     def __init__(self, file_path):
-        """Reads in ECG data from csv file and processes it
+        """Reads in ECG data from given csv file and processes it into various attributes
         
         :param file_path: file path to csv file
         """
@@ -36,9 +36,19 @@ class HRMonitor:
         self.export_JSON('{}.json'.format(self.path))
 
     def get_voltage_extremes(self):
+        """Gets the min and max of the voltage signal
+        
+        :return: tuple of the (min, max) for voltage
+        """
+
         return(min(self.voltage), max(self.voltage))
     
     def get_duration(self):
+        """Calculates the time duration of the ECG signal
+        
+        :return: difference between the first and last time value
+        """
+
         return self.time[-1] - self.time[0]
 
     def plot_data(self):
@@ -51,6 +61,11 @@ class HRMonitor:
         plt.savefig('{}.svg'.format(self.path), bbox_inches='tight')
 
     def export_JSON(self, file_path):
+        """Exports calculated attributes to a json file
+        
+        :param file_path: json file path to export to
+        """
+        # first, create a dict with the attributes
         dict_with_data = {
             'mean_hr_bpm': self.mean_hr_bpm,
             'voltage_extremes': self.voltage_extremes,
