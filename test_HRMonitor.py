@@ -1,11 +1,20 @@
 import pytest
+import os.path
 
-test_files_path = 'test_data/'
+test_dir = 'test_data/'
+
+
+@pytest.mark.skip(reason="plotting library")
+def test_plotting():
+    from hrmonitor import HRMonitor
+    hr = HRMonitor(get_test_file(1))
+    hr.plot_data()
 
 
 @pytest.mark.skip(reason="helper function")
 def get_test_file(index):
-    return test_files_path + 'test_data' + str(index) + '.csv'
+    return os.path.join(test_dir,
+                        'test_data{}.csv'.format(index))
 
 
 def test_init():
@@ -33,5 +42,22 @@ def test_filetype():
             HRMonitor('fake-file' + f)
 
 
+# testing for attributes
+def test_voltage_extremes():
+    """Checks if voltage extremes are correctly calculated
+    """
+    from hrmonitor import HRMonitor
+    hr = HRMonitor(os.path.join(test_dir, 'sample.csv'))
+    assert(hr.voltage_extremes == (0.0, 0.9))
+
+
+def test_duration():
+    """Checks if duration is calculated correctly
+    """
+    from hrmonitor import HRMonitor
+    hr = HRMonitor(os.path.join(test_dir, 'sample.csv'))
+    assert(hr.duration == 5)
+
+
 if __name__ == '__main__':
-    test_init()
+    test_plotting()

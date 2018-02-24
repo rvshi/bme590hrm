@@ -2,6 +2,9 @@
 """
 import os.path
 import json
+import numpy as np
+from matplotlib import pyplot as plt
+import time
 
 
 class HRMonitor:
@@ -15,16 +18,37 @@ class HRMonitor:
         """
         # extract data from .csv file and cast to float
         dh = DataHandler(file_path)
-        self.data = [[float(s) for s in entry] for entry in dh.data]
+        float_data = [[float(s) for s in entry] for entry in dh.data]
+        self.path = dh.path
+
+        # transpose data and get time/voltage lists
+        self.data = np.array(float_data).T.tolist()
+        self.time = self.data[0]
+        self.voltage = self.data[1]
         
         # determine calculated attributes
         self.mean_hr_bpm = 2
-        self.voltage_extremes = 3
-        self.duration = 4
+        self.voltage_extremes = self.get_voltage_extremes()
+        self.duration = self.get_duration()
         self.num_beats = 5
         self.beats = 2
 
-        self.export_JSON('{}.json'.format(dh.path))
+        self.export_JSON('{}.json'.format(self.path))
+
+    def get_voltage_extremes(self):
+        return(min(self.voltage), max(self.voltage))
+    
+    def get_duration(self):
+        return self.time[-1] - self.time[0]
+
+    def plot_data(self):
+        """Plots ECG data and calculated attributes
+        """
+        plt.plot(self.time, self.voltage)
+        plt.xlabel('Time')
+        plt.ylabel('Voltage')
+        plt.title('ECG Voltage Data')
+        plt.savefig('{}.svg'.format(self.path), bbox_inches='tight')
 
     def export_JSON(self, file_path):
         dict_with_data = {
