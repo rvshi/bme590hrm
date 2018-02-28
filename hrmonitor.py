@@ -25,6 +25,7 @@ class HRMonitor:
         :param file_path: file path to csv file
         :param time_units: units of time for data (relative to seconds), default is seconds, e.g. for milliseconds, time_units would be 0.001
         """
+        logger.info('HRMonitor initialized...')
         # extract data from .csv file and cast to float
         dh = DataHandler(file_path)
         float_data = [[float(s) for s in entry] for entry in dh.data]
@@ -35,56 +36,95 @@ class HRMonitor:
         self.time = self.data[0]
         self.voltage = self.data[1]
         
-        # determine calculated attributes
-        self.perform_autocorrel()
+        # determine basic attributes
+        self.voltage_extremes = self.get_voltage_extremes()
+        self.duration = self.get_duration()
 
-        # self.voltage_extremes = self.get_voltage_extremes()
-        # self.beats = self.locate_beats()
-        # self.num_beats = self.beats.size
-        # self.duration = self.get_duration()
-        # self.duration_in_min = (self.duration * time_units) / 60
-        # self.mean_hr_bpm = self.num_beats / self.duration_in_min
-        
-        self.export_JSON('{}.json'.format(self.path))
+        # interval attributes
+        self.peak_interval = self.get_peak_interval()
+        self.mean_hr_bpm = 60 / (self.peak_interval * time_units)
 
-    def perform_autocorrel(self):
-        raw_corrl = np.correlate(self.voltage, self.voltage, mode='full')
-        correl = raw_corrl[raw_corrl.size // 2:]
+        # beat position attributes
+        self.peaks = self.locate_peaks()
+        self.beats = np.empty(shape=(0, 0))
+        if(self.peaks.size > 0):
+            self.beats = self.time[self.peaks]
+        self.num_beats = self.beats.size
         
-        plt.figure(figsize=(12, 3))  # wide figure
-        plt.plot(correl, 'b-')
-        plt.show()
+        self.export_JSON('{}.json'.format(self.path))  # export data
+        logger.info('HRMonitor object created.')
 
-    def locate_beats(self):
-        """Locates the heart beats in the signal using the QRS (Pan-Tompkins) algorithm
-        
-        :return: numpy array with approximate locations of beats
+    @staticmethod
+    def moving_avg(data, n):
+        """Calculates moving average of size n.
+
+        Uses code from https://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
+
+        :param data: numpy vector to sum up
+        :param n: size of moving average window, gets shrinkwrapped to size of vector
+        :return: moving average for vector
         """
+        n = min(n, data.size)
+        cs = np.cumsum(data, dtype=float)
+        cs[n:] = cs[n:] - cs[:-n]
+        return cs[n - 1:] / n
+
+    def get_peak_interval(self):
+        """Determines interval between peaks using auto-correlation, reported in units of the time-scale.
         
+        :return: interval between ECG peaks
+        """
+        logger.info('Calculating interval between peaks...')
+        # calculate autocorrelation and square the data
+        data = self.voltage
+        raw_corrl = np.correlate(data, data, mode='full')
+        correl = raw_corrl[raw_corrl.size // 2:]
+        sq_cor = np.square(correl)
+
+        # find position after first peak (DC)
+        after_peak = 0
+        prev = sq_cor[0]
+        for i in range(sq_cor.size):
+            if(sq_cor[i] <= prev):
+                after_peak = i
+                prev = sq_cor[i]
+            else:
+                break
+
+        # find position of 2nd peak to get interval between peaks
+        interval_loc = after_peak + np.argmax(sq_cor[after_peak:], axis=0)
+        interval_val = self.time[interval_loc]
+        logger.info(
+            'Interval between peaks is {}.'.format(interval_val))
+        return interval_val
+
+    def locate_peaks(self):
+        """Locates the heart beats in the signal
+        
+        :return: numpy array with approximate locations of beats given as indices of the time array
+        """
+        logger.info('Locating peaks...')
         # bandpass filter (5-12 Hz passband)
         b, a = signal.butter(6, [0.1, 0.8], btype='bandpass')
         filtered_data = signal.lfilter(b, a, self.voltage)
 
         # squaring the data
-        squared_data = np.square(filtered_data)
+        sq_data = np.square(filtered_data)
 
         # locate beats
+        widths = np.arange(5, 10)  # specify peak width to look for
         peaks = signal.find_peaks_cwt(
-            squared_data, np.arange(1, 5))
+            sq_data, widths=widths, max_distances=widths / 1.5)
 
-        plt.figure(figsize=(12, 3))  # wide figure
-        plt.plot(self.time[peaks], self.voltage[peaks], 'ro')
-        plt.plot(self.time, squared_data, 'b-')
-        plt.show()
-
-        return self.time[peaks]
+        logger.info('{} peaks located.'.format(peaks.size))
+        return peaks
 
     def get_voltage_extremes(self):
         """Gets the min and max of the voltage signal
         
         :return: tuple of the (min, max) for voltage
         """
-        logger.info('Calculating voltage extremes.')
+        logger.info('Calculating voltage extremes...')
         extremes = (min(self.voltage), max(self.voltage))
         logger.info('Voltage extremes are {}.'.format(extremes))
         return extremes
@@ -94,7 +134,7 @@ class HRMonitor:
         
         :return: difference between the first and last time value
         """
-        logger.info('Calculating duration.')
+        logger.info('Calculating duration...')
         duration = self.time[-1] - self.time[0]
         logger.info('Duration of signal is {}.'.format(duration))
         return duration
@@ -102,15 +142,19 @@ class HRMonitor:
     def plot_data(self):
         """Plots ECG data and calculated attributes
         """
+        logger.info('Plotting data...')
         plt.figure(figsize=(12, 3))  # wide figure
-        plt.plot(self.time, self.voltage)
+        plt.plot(self.beats, self.voltage[self.peaks], 'ro')
+        plt.plot(self.time, self.voltage, 'b-')
         plt.xlabel('Time')
         plt.ylabel('Voltage')
         plt.title('ECG Voltage Data')
-        logger.info('Plotting data.')
-        plt.savefig('{}.png'.format(self.path),
+
+        plt_path = '{}.png'.format(self.path)
+        plt.savefig(plt_path,
                     bbox_inches='tight',
                     dpi=200)
+        logger.info('Data plotted and saved to {}.'.format(plt_path))
 
     def export_JSON(self, file_path):
         """Exports calculated attributes to a json file
@@ -127,7 +171,7 @@ class HRMonitor:
         }
 
         # convert dict to json, and write it to file
-        logger.info('Saving data to JSON file.')
+        logger.info('Saving data to JSON file...')
         json_with_data = json.dumps(dict_with_data, sort_keys=False)
         with open(file_path, 'w') as f:
             f.write(json_with_data)
