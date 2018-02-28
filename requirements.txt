@@ -3,4 +3,3 @@ pytest-pep8
 numpy
 matplotlib
 scipy
-logging
