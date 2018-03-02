@@ -222,7 +222,7 @@ class HRMonitor:
         prev_index = 0
         prev_time = self.time[prev_index]
         for i, time in enumerate(self.time):
-            if(time >= window_size + prev_time):
+            if(time >= window_size + prev_time or i == len(self.time) - 1):
                 (int_val, int_loc) = self.get_peak_interval(
                     self.voltage[prev_index:i])
 

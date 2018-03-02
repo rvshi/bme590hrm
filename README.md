@@ -33,7 +33,7 @@ Which produces the following files:
 ```json
 {
     "peak_interval": 0.808,
-    "mean_hr_bpm": [74.25743, 73.71007],
+    "mean_hr_bpm": [74.25743, 73.71007, 74.25743],
     "voltage_extremes": [-1.155, 1.72],
     "duration": 27.775,
     "num_beats": 36,

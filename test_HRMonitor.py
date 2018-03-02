@@ -144,4 +144,3 @@ def test_broken_files(caplog):
 if __name__ == '__main__':
     from hrmonitor import HRMonitor
     hr = HRMonitor(get_test_file(5))
-    hr.plot_data()
