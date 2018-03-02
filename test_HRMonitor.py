@@ -2,11 +2,13 @@ import pytest
 import os.path
 
 test_dir = 'test_data/'
-log_file = 'hrmonitor.log'
 
 
 @pytest.mark.skip(reason="plotting library")
 def test_plotting():
+    """Tests plotting functionality of HRMonitor
+    """
+
     from hrmonitor import HRMonitor
     hr = HRMonitor(get_test_file(1))
     hr.plot_data()
@@ -14,13 +16,25 @@ def test_plotting():
 
 @pytest.mark.skip(reason="helper function")
 def get_test_file(index):
+    """Provides path to files such as test_data2.csv or test_data6.csv
+    
+    :param index: number of the file to retrieve
+    :return: path for file of the format test_data<number>.csv
+    """
+
     return os.path.join(test_dir,
                         'test_data{}.csv'.format(index))
 
 
 @pytest.mark.skip(reason="helper function")
 def check_log_file(search_str):
-    with open(log_file) as f:
+    """Checks if log message is contained in log file
+    
+    :param search_str: string to look for
+    :return: boolean indicating if the string is in the log file
+    """
+    from hrmonitor import log_file_path
+    with open(log_file_path) as f:
         return search_str in f.read()
 
 

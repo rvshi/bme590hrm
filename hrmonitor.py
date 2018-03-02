@@ -7,8 +7,9 @@ from matplotlib import pyplot as plt
 from scipy import signal
 import logging
 
+log_file_path = 'hrmonitor.log'
 logging_config = dict(
-    filename='hrmonitor.log',
+    filename=log_file_path,
     filemode='w',
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
