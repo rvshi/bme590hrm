@@ -3,3 +3,4 @@ pytest-pep8
 numpy
 matplotlib
 scipy
+sphinx_rtd_theme
