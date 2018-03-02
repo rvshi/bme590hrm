@@ -15,6 +15,8 @@ logging_config = dict(
     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
     datefmt='%m/%d/%Y %I:%M:%S %p'
 )
+data_config = logging_config.copy()
+data_config['filename'] = 'datahandler.log'
 
 
 class HRMonitor:
@@ -319,7 +321,7 @@ class DataHandler:
         :param file_path: file path to data file
         """
         # setup logging
-        logging.basicConfig(**logging_config)
+        logging.basicConfig(**data_config)
         self.logger = logging.getLogger(__name__)
         self.data = None
         self.path = self.remove_file_type(file_path)
