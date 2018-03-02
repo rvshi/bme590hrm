@@ -33,6 +33,7 @@ hr.plot_data()
         - The default units is seconds.
         - `time_units` is a float representing the new unit of time in terms of seconds.
         - For example, if the units were milliseconds, you would specify this as:
+    - Example ECG files can be found in the `test_data/` directory.
  
 ```python
 HRMonitor('./file.csv', time_units = 0.001)
