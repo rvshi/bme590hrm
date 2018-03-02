@@ -3,3 +3,5 @@ instructions.md
 venv/
 *.json
 *.png
+
+docs/_build/
