@@ -31,7 +31,14 @@ Which produces the following files:
 
 `./test_data/test_data5.json`:
 ```json
-{"peak_interval": 0.808, "mean_hr_bpm": 74.257, "voltage_extremes": [-1.155, 1.72], "duration": 27.775, "num_beats": 36, "beats": [0.061, 0.886, 1.714, 2.511, 3.306, 4.081, 4.869, 5.736, 6.564, 7.372, 8.181, 8.986, 9.772, 10.556, 11.403, 12.25, 13.075, 13.886, 14.678, 15.489, 16.258, 17.072, 17.928, 18.742, 19.569, 20.378, 21.178, 21.958, 22.742, 23.111, 23.411, 23.875, 24.436, 25.253, 26.058, 26.867]}
+{
+    "peak_interval": 0.808,
+    "mean_hr_bpm": [74.25743, 73.71007, 74.25743],
+    "voltage_extremes": [-1.155, 1.72],
+    "duration": 27.775,
+    "num_beats": 36,
+    "beats": [0.061, 0.886, 1.714, 2.511, 3.306, 4.081, 4.869, 5.736, 6.564, 7.372, 8.181, 8.986, 9.772, 10.556, 11.403, 12.25, 13.075, 13.886, 14.678, 15.489, 16.258, 17.072, 17.928, 18.742, 19.569, 20.378, 21.178, 21.958, 22.742, 23.111, 23.411, 23.875, 24.436, 25.253, 26.058, 26.867]
+}
 ```
 `./test_data/test_data5.png`:
 ![Beats detected by HRMonitor](./example.png)
@@ -39,22 +46,26 @@ Which produces the following files:
 ### Some important usage notes
 - Input ECG data should be in `.csv` format.
 - Only two float values should be present on each line of the `.csv`, in this order: `time, voltage`.
-- The units for time should be specified by setting the `time_units` argument in the HRMonitor constructor function.
-    - The default units is seconds.
-    - `time_units` is a float representing the new unit of time in terms of seconds.
-    - For example, if the units were milliseconds, you would specify this as:
+- Time units are assumed to be continuous, i.e. with roughly the same interval between every time entry.
 - Example ECG files can be found in the `test_data/` directory.
- 
+- The data units can be specified by setting the `time_units` and `voltage_units` arguments in the HRMonitor constructor function.
+    - The default units are seconds and mV.
+    - `time_units` is a float representing the new unit of time in terms of seconds.
+    - `voltage_units` is a float representing the new unit of time in terms of seconds.
+    - For example, if the units were milliseconds and volts, you would specify this as:
 ```python
-HRMonitor('./file.csv', time_units = 0.001)
+HRMonitor('./file.csv', time_units = 0.001, voltage_units = 1000)
 ```
 
 ## Features
 - Calculates several class attributes from the data:
   - `time`: numpy vector of the time data
   - `voltage`: numpy vector of the voltage data
-  - `peak_interval`: interval between peaks in seconds, as estimated via autocorrelation of the signal
-  - `mean_hr_bpm`: average heart rate (in bpm) over the signal
+  - `peak_interval`: interval between all peaks in the signal, as estimated via autocorrelation of the signal (in seconds)
+  - `mean_hr_bpm`: numpy vector containing the average heart rate (in bpm) for contiguous bins with a size specified by the user
+    - default chunk size is 10 seconds
+    - calculated by obtaining `peak_interval` over chunks of the data
+    - this can be recalculated by running the `get_mean_hr(<window_size>)` function, where `window_size` is the size of the chunks in seconds
   - `voltage_extremes`: tuple of the (min, max) of the voltage data
   - `duration`: total length of the signal in seconds
   - `beats`: numpy array with the approximate time locations of heart beats via peak detection following a bandpass filter
