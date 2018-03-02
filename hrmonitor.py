@@ -23,11 +23,13 @@ class HRMonitor:
     """Class for processing ECG data into heart rate parameters
     """
 
-    def __init__(self, file_path, time_units=1):
+    def __init__(self, file_path, time_units=1, voltage_units=1, window_size=10):
         """Reads in ECG data from given csv file and processes it into various attributes
         
         :param file_path: file path to csv file
-        :param time_units: units of time for data (relative to seconds), default is seconds, e.g. for milliseconds, time_units would be 0.001
+        :param time_units: units of time for data (relative to seconds), default is 1, e.g. for milliseconds, time_units would be 0.001
+        :param voltage_units: units of voltage for data (relative to mV), default is 1, e.g. for volts, voltage_units would be 1000
+        :param window size for heart rate calculation, in units of seconds (see self.get_mean_hr()), defaults to 10 seconds
         """
         # setup logging
         logging.basicConfig(**logging_config)
@@ -40,15 +42,19 @@ class HRMonitor:
         self.path = dh.path
 
         # validate data and get time/voltage lists
+        self.time_units = time_units
+        self.voltage_units = voltage_units
         (self.time, self.voltage) = self.parse_data(self.data)
-        
+
         # determine basic attributes
         self.voltage_extremes = self.get_voltage_extremes()
-        self.duration = self.get_duration() * time_units
+        self.duration = self.get_duration()
 
-        # interval attributes
-        self.peak_interval = self.get_peak_interval() * time_units
-        self.mean_hr_bpm = 60 / self.peak_interval
+        # first get interval over entire signal
+        (self.peak_interval, self.interval_loc) = self.get_peak_interval(self.voltage)
+
+        # then, get the heart rate over pre-specified chunks of time
+        self.mean_hr_bpm = self.get_mean_hr(window_size)
 
         # beat position attributes
         self.peaks = self.locate_peaks()
@@ -57,7 +63,8 @@ class HRMonitor:
             self.beats = self.time[self.peaks]
         self.num_beats = self.beats.size
         
-        self.export_JSON('{}.json'.format(self.path))  # export data
+        # export data
+        self.export_JSON('{}.json'.format(self.path))
         self.logger.info('HRMonitor object created.')
 
     @staticmethod
@@ -128,11 +135,11 @@ class HRMonitor:
         return (float(line[0]), float(line[1]))
 
     def parse_data(self, data):
-        """Validate and sanitize input data, parse valid lines as floats
+        """Validate and sanitize input data, parse valid lines as floats, also performs unit standardization
         
         :param data: list containing the input data to check
         :raises ValueError: if data is empty
-        :return: tuple of numpy arrays (time, voltage)
+        :return: tuple of numpy arrays (time [s], voltage [mV])
         """
         self.logger.info('Validating data...')
         
@@ -157,7 +164,8 @@ class HRMonitor:
             self.logger.warn('Voltage values outside of typical range of (-300, 300) mV.')
 
         self.logger.info('Data parsed. No errors found.')
-        return (np.asarray(time), np.asarray(voltage))
+        return (np.asarray(time) * self.time_units,
+                np.asarray(voltage) * self.voltage_units)
 
     @staticmethod
     def moving_avg(data, n):
@@ -174,14 +182,14 @@ class HRMonitor:
         cs[n:] = cs[n:] - cs[:-n]
         return cs[n - 1:] / n
 
-    def get_peak_interval(self):
-        """Determines interval between peaks using auto-correlation, reported in units of the time-scale.
+    def get_peak_interval(self, data):
+        """Determines interval between peaks using auto-correlation
         
-        :return: interval between ECG peaks
+        :param data: data interval to process into heart
+        :return: tuple containing (interval size between ECG peaks in seconds, array index of interval location)
         """
         self.logger.info('Calculating interval between peaks...')
         # calculate autocorrelation and square the data
-        data = self.voltage
         raw_corrl = np.correlate(data, data, mode='full')
         correl = raw_corrl[raw_corrl.size // 2:]
         sq_cor = np.square(correl)
@@ -197,10 +205,36 @@ class HRMonitor:
                 break
 
         # find position of 2nd peak to get interval between peaks
-        self.interval_loc = after_peak + np.argmax(sq_cor[after_peak:], axis=0)
-        interval_val = self.time[self.interval_loc]
+        interval_loc = after_peak + np.argmax(sq_cor[after_peak:], axis=0)
+        interval_val = self.time[interval_loc]
         self.logger.info('Interval between peaks is {}.'.format(interval_val))
-        return interval_val
+        return (interval_val, interval_loc)
+
+    def get_mean_hr(self, window_size):
+        """Determines heart rate (bpm) for block chunks
+        
+        :param window_size: size of window to determine heart rate for
+        :return: numpy vector of heart rate for each block interval
+        """
+
+        self.logger.info('Calculating mean heart rate...')
+        heart_rates = []
+        prev_index = 0
+        prev_time = self.time[prev_index]
+        for i, time in enumerate(self.time):
+            if(time >= window_size + prev_time):
+                (int_val, int_loc) = self.get_peak_interval(
+                    self.voltage[prev_index:i])
+
+                heart_rate = (60 / int_val).round(5)
+                heart_rates.append(heart_rate)
+
+                prev_index = i
+                prev_time = time
+        
+        self.logger.info(
+            'Heart rates determined for {} blocks'.format(len(heart_rates)))
+        return np.asarray(heart_rates)
 
     def locate_peaks(self):
         """Locates the heart beats in the signal
@@ -277,9 +311,9 @@ class HRMonitor:
                             linestyle='--')
 
         plt.plot(self.time, self.voltage, 'b-')
-        plt.xlabel('Time')
-        plt.ylabel('Voltage')
-        plt.title('ECG Voltage Data')
+        plt.xlabel('Time [s]')
+        plt.ylabel('Voltage [mV]')
+        plt.title('ECG Signal')
 
         plt_path = '{}.png'.format(self.path)
         plt.savefig(plt_path,
@@ -295,7 +329,7 @@ class HRMonitor:
         # first, create a dict with the attributes
         dict_with_data = {
             'peak_interval': round(self.peak_interval, 3),
-            'mean_hr_bpm': round(self.mean_hr_bpm, 3),
+            'mean_hr_bpm': self.mean_hr_bpm.tolist(),
             'voltage_extremes': self.voltage_extremes,
             'duration': self.duration,
             'num_beats': self.num_beats,

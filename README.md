@@ -33,7 +33,7 @@ Which produces the following files:
 ```json
 {
     "peak_interval": 0.808,
-    "mean_hr_bpm": 74.257,
+    "mean_hr_bpm": [74.25743, 73.71007],
     "voltage_extremes": [-1.155, 1.72],
     "duration": 27.775,
     "num_beats": 36,
@@ -46,6 +46,7 @@ Which produces the following files:
 ### Some important usage notes
 - Input ECG data should be in `.csv` format.
 - Only two float values should be present on each line of the `.csv`, in this order: `time, voltage`.
+- Time units are assumed to be continuous, i.e. with roughly the same interval between every time entry.
 - Example ECG files can be found in the `test_data/` directory.
 - The data units can be specified by setting the `time_units` and `voltage_units` arguments in the HRMonitor constructor function.
     - The default units are seconds and mV.
@@ -60,9 +61,11 @@ HRMonitor('./file.csv', time_units = 0.001, voltage_units = 1000)
 - Calculates several class attributes from the data:
   - `time`: numpy vector of the time data
   - `voltage`: numpy vector of the voltage data
-  - `peak_interval`: interval between peaks in seconds, as estimated via autocorrelation of the signal
-  - `mean_hr_bpm`: average heart rate (in bpm) over the signal in chunks as specified by the user
-    - default chunk size is 20 seconds
+  - `peak_interval`: interval between all peaks in the signal, as estimated via autocorrelation of the signal (in seconds)
+  - `mean_hr_bpm`: numpy vector containing the average heart rate (in bpm) for contiguous bins with a size specified by the user
+    - default chunk size is 10 seconds
+    - calculated by obtaining `peak_interval` over chunks of the data
+    - this can be recalculated by running the `get_mean_hr(<window_size>)` function, where `window_size` is the size of the chunks in seconds
   - `voltage_extremes`: tuple of the (min, max) of the voltage data
   - `duration`: total length of the signal in seconds
   - `beats`: numpy array with the approximate time locations of heart beats via peak detection following a bandpass filter

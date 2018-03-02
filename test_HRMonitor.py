@@ -66,14 +66,8 @@ def test_json():
     HRMonitor(input_path)
     assert os.path.isfile(json_path)
 
-    json_values = dict({
-        "peak_interval": 6.0,
-        "mean_hr_bpm": 10.0,
-        "voltage_extremes": [0.0, 0.9],
-        "duration": 5.0,
-        "num_beats": 0,
-        "beats": []
-    })
+    json_values = {"peak_interval": 6.0, "mean_hr_bpm": [12.0], "voltage_extremes": [
+        0.0, 0.9], "duration": 5.0, "num_beats": 0, "beats": []}
 
     # make sure that the json values are the same
     with open(json_path, 'r') as f:
@@ -146,3 +140,8 @@ def test_broken_files(caplog):
         with pytest.raises(RuntimeError):
             HRMonitor(os.path.join(test_dir, 'broken_int{}.csv'.format(i)))
         assert 'Interpolated repair failed for line {}'.format(i + 1) in caplog.text
+
+if __name__ == '__main__':
+    from hrmonitor import HRMonitor
+    hr = HRMonitor(get_test_file(5))
+    hr.plot_data()
