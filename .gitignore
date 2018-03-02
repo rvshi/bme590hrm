@@ -5,3 +5,4 @@ venv/
 *.png
 
 docs/_build/
+!example.png
