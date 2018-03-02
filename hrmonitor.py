@@ -1,4 +1,4 @@
-"""Heart Rate Monitor Module
+"""Heart Rate Monitor Python Module
 """
 import os.path
 import json
@@ -38,11 +38,11 @@ class HRMonitor:
         
         # determine basic attributes
         self.voltage_extremes = self.get_voltage_extremes()
-        self.duration = self.get_duration()
+        self.duration = self.get_duration() * time_units
 
         # interval attributes
-        self.peak_interval = self.get_peak_interval()
-        self.mean_hr_bpm = 60 / (self.peak_interval * time_units)
+        self.peak_interval = self.get_peak_interval() * time_units
+        self.mean_hr_bpm = 60 / self.peak_interval
 
         # beat position attributes
         self.peaks = self.locate_peaks()
@@ -140,7 +140,7 @@ class HRMonitor:
         return duration
 
     def plot_data(self):
-        """Plots ECG data and calculated attributes
+        """Plots ECG data and calculated attributes and saves it as a .png file with the same name as the input .csv.
         """
         logger.info('Plotting data...')
         plt.figure(figsize=(12, 3))  # wide figure
@@ -163,6 +163,7 @@ class HRMonitor:
         """
         # first, create a dict with the attributes
         dict_with_data = {
+            'peak_interval': self.peak_interval,
             'mean_hr_bpm': self.mean_hr_bpm,
             'voltage_extremes': self.voltage_extremes,
             'duration': self.duration,
