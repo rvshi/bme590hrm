@@ -7,12 +7,13 @@ from matplotlib import pyplot as plt
 from scipy import signal
 import logging
 
-logging.basicConfig(filename='hrmonitor.log',
-                    filemode='w',
-                    level=logging.DEBUG,
-                    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
-                    datefmt='%m/%d/%Y %I:%M:%S %p')
-logger = logging.getLogger(__name__)
+logging_config = dict(
+    filename='hrmonitor.log',
+    filemode='w',
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
+    datefmt='%m/%d/%Y %I:%M:%S %p'
+)
 
 
 class HRMonitor:
@@ -25,16 +26,18 @@ class HRMonitor:
         :param file_path: file path to csv file
         :param time_units: units of time for data (relative to seconds), default is seconds, e.g. for milliseconds, time_units would be 0.001
         """
-        logger.info('HRMonitor initialized...')
+        # setup logging
+        logging.basicConfig(**logging_config)
+        self.logger = logging.getLogger(__name__)
+        self.logger.info('HRMonitor initialized...')
+
         # extract data from .csv file and cast to float
         dh = DataHandler(file_path)
-        float_data = [[float(s) for s in entry] for entry in dh.data]
+        self.data = dh.data
         self.path = dh.path
 
-        # transpose data and get time/voltage lists
-        self.data = np.array(float_data).T
-        self.time = self.data[0]
-        self.voltage = self.data[1]
+        # validate data and get time/voltage lists
+        (self.time, self.voltage) = self.parse_data(self.data)
         
         # determine basic attributes
         self.voltage_extremes = self.get_voltage_extremes()
@@ -52,7 +55,106 @@ class HRMonitor:
         self.num_beats = self.beats.size
         
         self.export_JSON('{}.json'.format(self.path))  # export data
-        logger.info('HRMonitor object created.')
+        self.logger.info('HRMonitor object created.')
+
+    @staticmethod
+    def is_float(input):
+        """Check if string is a float and not NaN
+        
+        :param input: string to check
+        :return: boolean indicating if the string is a float
+        """
+        try:
+            float(input)
+        except ValueError:
+            return False
+        return not input == 'NaN'
+
+    def repair_line(self, line, line_num):
+        """Attempts interpolated repair of line
+        
+        :param line: list of elements to repair
+        :param line_num: line number in file, for finding position in data
+        :raises RuntimeError: if unable to perform interpolation of values
+        :return: float tuple of (time, voltage) as averaged between the previous and next lines
+        """
+
+        self.logger.warn('Invalid values encountered on line {}. Attempting interpolated repair...'.format(
+            line_num + 1))
+
+        # check if previous and next lines exist and are valid
+        if(line_num > 0 and line_num < len(self.data) - 1):
+            prev_line = self.data[line_num - 1]
+            next_line = self.data[line_num + 1]
+
+            prev_valid = len(prev_line) == 2 and self.is_float(
+                prev_line[0]) and self.is_float(prev_line[1])
+            next_valid = len(next_line) == 2 and self.is_float(
+                next_line[0]) and self.is_float(next_line[1])
+
+            # if conditions are met, perform repair
+            if(prev_valid and next_valid):
+                time_val = (float(prev_line[0]) + float(next_line[0])) / 2
+                voltage_val = (float(prev_line[1]) + float(next_line[1])) / 2
+
+                self.logger.info('Interpolation successfully produced ({:0.3}, {:0.3}).'.format(
+                    time_val, voltage_val))
+                return (time_val, voltage_val)
+
+        err_msg = 'Interpolated repair failed for line {}.'.format(
+            line_num + 1)
+        self.logger.error(err_msg)
+        raise RuntimeError(err_msg)
+
+    def parse_line(self, line, line_num):
+        """Parses a single line into the float tuple of (time, voltage), throws exceptions as necessary
+        
+        :param line: list of elements to parse
+        :param line_num: line number in file, for tracking exceptions
+        :raises ValueError: if there are more or less than two elements per line
+        :return: float tuple of (time, voltage)
+        """
+        if(len(line) != 2):
+            err_msg = 'Too many values on line {}.'.format(line_num + 1)
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
+
+        elif(any([not self.is_float(v) for v in line])):
+            return(self.repair_line(line, line_num))
+
+        return (float(line[0]), float(line[1]))
+
+    def parse_data(self, data):
+        """Validate and sanitize input data, parse valid lines as floats
+        
+        :param data: list containing the input data to check
+        :raises ValueError: if data is empty
+        :return: tuple of numpy arrays (time, voltage)
+        """
+        self.logger.info('Validating data...')
+        
+        if(len(data) == 0):
+            err_msg = 'No data values present.'
+            self.logger.error(err_msg)
+            raise ValueError(err_msg)
+
+        time = []
+        voltage = []
+        outside_range = False
+        for i, line in enumerate(data):
+            (time_val, voltage_val) = self.parse_line(line, i)
+            time.append(time_val)
+            voltage.append(voltage_val)
+
+            # check if value is outside range
+            if(not outside_range and abs(voltage_val) >= 300):
+                outside_range = True
+        
+        if(outside_range):
+            self.logger.warn('Voltage values outside of typical range of (-300, 300) mV.')
+
+        self.logger.info('Data parsed. No errors found.')
+        return (np.asarray(time), np.asarray(voltage))
 
     @staticmethod
     def moving_avg(data, n):
@@ -74,7 +176,7 @@ class HRMonitor:
         
         :return: interval between ECG peaks
         """
-        logger.info('Calculating interval between peaks...')
+        self.logger.info('Calculating interval between peaks...')
         # calculate autocorrelation and square the data
         data = self.voltage
         raw_corrl = np.correlate(data, data, mode='full')
@@ -92,10 +194,9 @@ class HRMonitor:
                 break
 
         # find position of 2nd peak to get interval between peaks
-        interval_loc = after_peak + np.argmax(sq_cor[after_peak:], axis=0)
-        interval_val = self.time[interval_loc]
-        logger.info(
-            'Interval between peaks is {}.'.format(interval_val))
+        self.interval_loc = after_peak + np.argmax(sq_cor[after_peak:], axis=0)
+        interval_val = self.time[self.interval_loc]
+        self.logger.info('Interval between peaks is {}.'.format(interval_val))
         return interval_val
 
     def locate_peaks(self):
@@ -103,8 +204,8 @@ class HRMonitor:
         
         :return: numpy array with approximate locations of beats given as indices of the time array
         """
-        logger.info('Locating peaks...')
-        # bandpass filter (5-12 Hz passband)
+        self.logger.info('Locating peaks...')
+        # bandpass filter (6th order Butterworth filter)
         b, a = signal.butter(6, [0.1, 0.8], btype='bandpass')
         filtered_data = signal.lfilter(b, a, self.voltage)
 
@@ -112,11 +213,31 @@ class HRMonitor:
         sq_data = np.square(filtered_data)
 
         # locate beats
-        widths = np.arange(5, 10)  # specify peak width to look for
+        beat_width = 5
+        widths = np.arange(beat_width, beat_width * 2)
         peaks = signal.find_peaks_cwt(
-            sq_data, widths=widths, max_distances=widths / 1.5)
+            sq_data, widths=widths)
 
-        logger.info('{} peaks located.'.format(peaks.size))
+        if(peaks.size == 0):
+            self.logger.warning('No peaks located.')
+        else:
+            # filter through and remove peaks that are too close to each other
+            filtered_peaks = []
+            num_peaks = len(peaks)
+            thre_width = self.interval_loc // 4  # threshold width
+            i = 0
+            while i < (num_peaks - 1):
+                current_peak = peaks[i]
+                filtered_peaks.append(current_peak)
+                i += 1
+                for j in range(i, num_peaks):
+                    i = j
+                    if((peaks[j] - current_peak) > thre_width):
+                        break
+            
+            peaks = np.asarray(filtered_peaks)
+            self.logger.info('{} peaks located.'.format(peaks.size))
+
         return peaks
 
     def get_voltage_extremes(self):
@@ -124,9 +245,9 @@ class HRMonitor:
         
         :return: tuple of the (min, max) for voltage
         """
-        logger.info('Calculating voltage extremes...')
+        self.logger.info('Calculating voltage extremes...')
         extremes = (min(self.voltage), max(self.voltage))
-        logger.info('Voltage extremes are {}.'.format(extremes))
+        self.logger.info('Voltage extremes are {}.'.format(extremes))
         return extremes
     
     def get_duration(self):
@@ -134,17 +255,24 @@ class HRMonitor:
         
         :return: difference between the first and last time value
         """
-        logger.info('Calculating duration...')
+        self.logger.info('Calculating duration...')
         duration = self.time[-1] - self.time[0]
-        logger.info('Duration of signal is {}.'.format(duration))
+        self.logger.info('Duration of signal is {}.'.format(duration))
         return duration
 
     def plot_data(self):
         """Plots ECG data and calculated attributes and saves it as a .png file with the same name as the input .csv.
         """
-        logger.info('Plotting data...')
+        self.logger.info('Plotting data...')
         plt.figure(figsize=(12, 3))  # wide figure
-        plt.plot(self.beats, self.voltage[self.peaks], 'ro')
+
+        # plot detected beats
+        if(self.num_beats > 0):
+            for beat_loc in self.beats:
+                plt.axvline(x=beat_loc,
+                            color='r',
+                            linestyle='--')
+
         plt.plot(self.time, self.voltage, 'b-')
         plt.xlabel('Time')
         plt.ylabel('Voltage')
@@ -154,7 +282,7 @@ class HRMonitor:
         plt.savefig(plt_path,
                     bbox_inches='tight',
                     dpi=200)
-        logger.info('Data plotted and saved to {}.'.format(plt_path))
+        self.logger.info('Data plotted and saved to {}.'.format(plt_path))
 
     def export_JSON(self, file_path):
         """Exports calculated attributes to a json file
@@ -163,8 +291,8 @@ class HRMonitor:
         """
         # first, create a dict with the attributes
         dict_with_data = {
-            'peak_interval': self.peak_interval,
-            'mean_hr_bpm': self.mean_hr_bpm,
+            'peak_interval': round(self.peak_interval, 3),
+            'mean_hr_bpm': round(self.mean_hr_bpm, 3),
             'voltage_extremes': self.voltage_extremes,
             'duration': self.duration,
             'num_beats': self.num_beats,
@@ -172,12 +300,12 @@ class HRMonitor:
         }
 
         # convert dict to json, and write it to file
-        logger.info('Saving data to JSON file...')
+        self.logger.info('Saving data to JSON file...')
         json_with_data = json.dumps(dict_with_data, sort_keys=False)
         with open(file_path, 'w') as f:
             f.write(json_with_data)
         
-        logger.info('Data saved to {}.'.format(file_path))
+        self.logger.info('Data saved to {}.'.format(file_path))
 
 
 class DataHandler:
@@ -189,6 +317,9 @@ class DataHandler:
         
         :param file_path: file path to data file
         """
+        # setup logging
+        logging.basicConfig(**logging_config)
+        self.logger = logging.getLogger(__name__)
         self.data = None
         self.path = self.remove_file_type(file_path)
         
@@ -205,13 +336,13 @@ class DataHandler:
         :return dictionary of data values
         """
         data = []
-        logger.info('Reading data from {}.'.format(file_path))
+        self.logger.info('Reading data from {}.'.format(file_path))
         with open(file_path) as f:
             for line in f:
                 raw_string = line.strip()
                 data.append(raw_string.split(','))
 
-        logger.info('Finished reading data from {}.'.format(file_path))
+        self.logger.info('Finished reading data from {}.'.format(file_path))
         return data
 
     def remove_file_type(self, file_path):
